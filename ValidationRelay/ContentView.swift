@@ -89,6 +89,35 @@ struct ContentView: View {
                 }
                 
                 Section {
+                    Toggle("Hybrid Mac Identity", isOn: $relayConnectionManager.useHybridIdentity)
+                    if relayConnectionManager.useHybridIdentity {
+                        HStack {
+                            Text("Serial Number")
+                            Spacer()
+                            Text(relayConnectionManager.hybridSerialNumber)
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        HStack {
+                            Text("UUID")
+                            Spacer()
+                            Text(relayConnectionManager.hybridUniqueDeviceID)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Button("Regenerate Identity") {
+                            relayConnectionManager.regenerateHybridIdentity()
+                        }
+                    }
+                } header: {
+                    Text("Identity settings")
+                } footer: {
+                    Text("Spoofs serial_number (12-char iMac13,1) and unique_device_id (UUID) in get-version-info")
+                }
+                
+                Section {
                     // Navigation to Log page
                     NavigationLink(destination: LogView(logItems: relayConnectionManager.logItems)) {
                         Text("Log")
@@ -110,6 +139,7 @@ struct ContentView: View {
                         relayConnectionManager.savedRegistrationCode = ""
                         relayConnectionManager.savedRegistrationSecret = ""
                         relayConnectionManager.registrationCode = "None"
+                        relayConnectionManager.regenerateHybridIdentity()
                         wantRelayConnected = false
                     }
                     .foregroundColor(.red)
@@ -127,6 +157,8 @@ struct ContentView: View {
 
 }
 
-#Preview {
-    ContentView(relayConnectionManager: RelayConnectionManager())
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView(relayConnectionManager: RelayConnectionManager())
+    }
 }

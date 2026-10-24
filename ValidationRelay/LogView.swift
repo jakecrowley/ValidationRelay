@@ -66,13 +66,15 @@ struct LogView: View {
     }
 }
 
-#Preview {
-    NavigationView {
-        LogView(logItems: {
-            let testLog = LogItems()
-            testLog.log("Test message")
-            testLog.log("Test error", isError: true)
-            return testLog
-        }())
+struct LogView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationView {
+            LogView(logItems: {
+                let testLog = LogItems()
+                testLog.log("Test message")
+                testLog.log("Test error", isError: true)
+                return testLog
+            }())
+        }
     }
 }

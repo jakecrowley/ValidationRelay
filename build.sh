@@ -24,5 +24,5 @@ else
     popd
     cp DerivedData/ValidationRelay/Build/Products/Release-iphoneos/ValidationRelay.tipa .
     rm -rf Payload
-    open -R ValidationRelay.tipa
+    open -R ValidationRelay.tipa 2>/dev/null || true
 fi

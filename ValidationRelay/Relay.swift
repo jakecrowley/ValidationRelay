@@ -7,8 +7,45 @@
 
 import Foundation
 import Network
+#if canImport(NWWebSocket)
 import NWWebSocket
+#endif
 import SwiftUI
+
+private let imac131Suffixes = [
+    "DNCT", "DNCR", "DNML", "DNMM", "F8QM", "F8QN", "F9RN",
+    "FC6M", "FC6N", "FC6P", "FD55", "FD5Y", "FF7L"
+]
+private let serialYears = Array("CDFGHJKLMNPQRSTUVWX")
+private let serialWeeks = Array("123456789CDFGHJKLMNPQRSTVW")
+private let serialAlphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ0123456789")
+
+func generateHybridSerial() -> String {
+    let year = String(serialYears.randomElement()!)
+    let week = String(serialWeeks.randomElement()!)
+    let uniq = String((0..<3).map { _ in serialAlphabet.randomElement()! })
+    let suffix = imac131Suffixes.randomElement()!
+    return "C02" + year + week + uniq + suffix
+}
+
+func generateHybridUDID() -> String {
+    return UUID().uuidString.uppercased()
+}
+
+func getOrCreateHybridIdentity() -> (serial: String, udid: String) {
+    let defaults = UserDefaults.standard
+    var serial = defaults.string(forKey: "hybridSerialNumber") ?? ""
+    var udid = defaults.string(forKey: "hybridUniqueDeviceID") ?? ""
+    if serial.count != 12 {
+        serial = generateHybridSerial()
+        defaults.set(serial, forKey: "hybridSerialNumber")
+    }
+    if udid.isEmpty {
+        udid = generateHybridUDID()
+        defaults.set(udid, forKey: "hybridUniqueDeviceID")
+    }
+    return (serial, udid)
+}
 
 func getIdentifiers() -> [String: String] {
     var ustruct: utsname = utsname()
@@ -19,16 +56,28 @@ func getIdentifiers() -> [String: String] {
             String(cString: $0)
         }
     }
-    
-    
+
+    let defaults = UserDefaults.standard
+    let useHybrid = (defaults.object(forKey: "useHybridIdentity") as? Bool) ?? true
+
+    let udid: String
+    let serial: String
+    if useHybrid {
+        let hybrid = getOrCreateHybridIdentity()
+        udid = hybrid.udid
+        serial = hybrid.serial
+    } else {
+        udid = MGCopyAnswer("UniqueDeviceID" as CFString)!.takeRetainedValue() as! String
+        serial = MGCopyAnswer("SerialNumber" as CFString)!.takeRetainedValue() as! String
+    }
+
     let identifiers = [
         "hardware_version": machine,
         "software_name": "iPhone OS",
         "software_version": UIDevice.current.systemVersion,
         "software_build_id": buildNumber()!,
-        "unique_device_id": MGCopyAnswer("UniqueDeviceID" as CFString)!.takeRetainedValue() as! String,
-        "serial_number": MGCopyAnswer("SerialNumber" as CFString)!.takeRetainedValue() as! String
-        
+        "unique_device_id": udid,
+        "serial_number": serial
     ]
     return identifiers
 }
@@ -43,6 +92,10 @@ class RelayConnectionManager: ObservableObject {
     @AppStorage("savedRegistrationCode") public var savedRegistrationCode = ""
     @AppStorage("savedRegistrationURL") public var savedRegistrationURL = ""
     
+    @AppStorage("useHybridIdentity") public var useHybridIdentity = true
+    @AppStorage("hybridSerialNumber") public var hybridSerialNumber = ""
+    @AppStorage("hybridUniqueDeviceID") public var hybridUniqueDeviceID = ""
+    
     var currentURL: URL? = nil
     var connectionDelegate: RelayConnectionDelegate? = nil
     
@@ -50,6 +103,30 @@ class RelayConnectionManager: ObservableObject {
     
     var backoff: Int = 2
     let maxBackoff: Int = 64
+
+    init() {
+        ensureHybridIdentity()
+    }
+
+    func ensureHybridIdentity() {
+        let hybrid = getOrCreateHybridIdentity()
+        if hybridSerialNumber != hybrid.serial {
+            hybridSerialNumber = hybrid.serial
+        }
+        if hybridUniqueDeviceID != hybrid.udid {
+            hybridUniqueDeviceID = hybrid.udid
+        }
+    }
+
+    func regenerateHybridIdentity() {
+        let newSerial = generateHybridSerial()
+        let newUDID = generateHybridUDID()
+        UserDefaults.standard.set(newSerial, forKey: "hybridSerialNumber")
+        UserDefaults.standard.set(newUDID, forKey: "hybridUniqueDeviceID")
+        hybridSerialNumber = newSerial
+        hybridUniqueDeviceID = newUDID
+        logItems.log("Generated new hybrid identity: \(newSerial)")
+    }
 
     func connect(_ url: URL) {
         logItems.log("Connecting to \(url)")
