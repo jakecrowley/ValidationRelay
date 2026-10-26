@@ -32,52 +32,157 @@ func generateHybridUDID() -> String {
     return UUID().uuidString.uppercased()
 }
 
-func getOrCreateHybridIdentity() -> (serial: String, udid: String) {
-    let defaults = UserDefaults.standard
-    var serial = defaults.string(forKey: "hybridSerialNumber") ?? ""
-    var udid = defaults.string(forKey: "hybridUniqueDeviceID") ?? ""
-    if serial.count != 12 {
-        serial = generateHybridSerial()
-        defaults.set(serial, forKey: "hybridSerialNumber")
-    }
-    if udid.isEmpty {
-        udid = generateHybridUDID()
-        defaults.set(udid, forKey: "hybridUniqueDeviceID")
-    }
-    return (serial, udid)
-}
-
-func getIdentifiers() -> [String: String] {
+func machineIdentifier() -> String {
     var ustruct: utsname = utsname()
     uname(&ustruct)
     var ustruct2 = ustruct
-    let machine = withUnsafePointer(to: &ustruct2.machine) {
+    return withUnsafePointer(to: &ustruct2.machine) {
         $0.withMemoryRebound(to: CChar.self, capacity: MemoryLayout.size(ofValue: ustruct.machine)) {
             String(cString: $0)
         }
     }
+}
 
-    let defaults = UserDefaults.standard
-    let useHybrid = (defaults.object(forKey: "useHybridIdentity") as? Bool) ?? true
+func realUniqueDeviceID() -> String {
+    return MGCopyAnswer("UniqueDeviceID" as CFString)!.takeRetainedValue() as! String
+}
 
-    let udid: String
-    let serial: String
-    if useHybrid {
-        let hybrid = getOrCreateHybridIdentity()
-        udid = hybrid.udid
-        serial = hybrid.serial
-    } else {
-        udid = MGCopyAnswer("UniqueDeviceID" as CFString)!.takeRetainedValue() as! String
-        serial = MGCopyAnswer("SerialNumber" as CFString)!.takeRetainedValue() as! String
+func realSerialNumber() -> String {
+    return MGCopyAnswer("SerialNumber" as CFString)!.takeRetainedValue() as! String
+}
+
+// Apple activates each serial exactly once, so a hybrid identity must stay stable for the
+// life of a registration and must never be shared between devices. Identities are keyed by
+// the real UDID and record the registration code they were issued for: a new code means a
+// new registration, which gets a fresh identity. Old identities are kept under
+// "<udid>.retired-<time>" keys rather than deleted. Same JSON format as OpenBubblesProxy's
+// registry.json, so an entry for this phone can be carried over from the proxy.
+struct HybridIdentity: Codable {
+    var serial: String
+    var udid: String
+    var relayCode: String? // nil for entries from OpenBubblesProxy, which doesn't track codes
+    var realSerial: String?
+    var hardwareVersion: String?
+    var created: String?
+
+    enum CodingKeys: String, CodingKey {
+        case serial = "hybrid_serial"
+        case udid = "hybrid_udid"
+        case relayCode = "relay_code"
+        case realSerial = "real_serial"
+        case hardwareVersion = "hardware_version"
+        case created
+    }
+}
+
+class IdentityRegistry {
+    private let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("identity_registry.json")
+    private var entries: [String: HybridIdentity] = [:]
+    // false if the file couldn't be read or moved aside; we then refuse to overwrite it
+    private var persist = true
+    private let logItems: LogItems
+
+    init(logItems: LogItems) {
+        self.logItems = logItems
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            entries = try JSONDecoder().decode([String: HybridIdentity].self, from: Data(contentsOf: url))
+        } catch {
+            // never silently replace a registry we couldn't read; move it aside first
+            let backup = url.appendingPathExtension("unreadable-\(Int(Date().timeIntervalSince1970))")
+            do {
+                try FileManager.default.moveItem(at: url, to: backup)
+                logItems.log("Identity registry unreadable (\(error)); moved to \(backup.lastPathComponent)", isError: true)
+            } catch let moveError {
+                persist = false
+                logItems.log("Identity registry unreadable (\(error)) and could not be moved aside (\(moveError)); identities will NOT be saved", isError: true)
+            }
+        }
     }
 
+    // Identities from earlier builds of this fork were stored in UserDefaults
+    func migrateFromUserDefaults(realUDID: String) {
+        let defaults = UserDefaults.standard
+        guard entries[realUDID] == nil,
+              let serial = defaults.string(forKey: "hybridSerialNumber"), serial.count == 12,
+              let udid = defaults.string(forKey: "hybridUniqueDeviceID"), !udid.isEmpty else { return }
+        entries[realUDID] = HybridIdentity(serial: serial, udid: udid)
+        save()
+        defaults.removeObject(forKey: "hybridSerialNumber")
+        defaults.removeObject(forKey: "hybridUniqueDeviceID")
+        logItems.log("Moved existing hybrid identity \(serial) into the identity registry")
+    }
+
+    // The identity already issued for this registration, if any
+    func existing(realUDID: String, relayCode: String) -> HybridIdentity? {
+        guard let entry = entries[realUDID], entry.relayCode == nil || entry.relayCode == relayCode else { return nil }
+        return entry
+    }
+
+    // The identity to report for this registration, issuing one if needed
+    func identity(realUDID: String, realSerial: String, hardwareVersion: String, relayCode: String) -> HybridIdentity {
+        if let entry = entries[realUDID] {
+            if entry.relayCode == relayCode {
+                return entry
+            }
+            if entry.relayCode == nil {
+                // carried over from OpenBubblesProxy or an earlier build; it belongs to this registration
+                var adopted = entry
+                adopted.relayCode = relayCode
+                entries[realUDID] = adopted
+                save()
+                logItems.log("Using existing hybrid identity \(adopted.serial) for registration code \(relayCode)")
+                return adopted
+            }
+            retire(realUDID: realUDID)
+            logItems.log("New registration code: retired hybrid identity \(entry.serial)")
+        }
+
+        let identity = HybridIdentity(
+            serial: generateHybridSerial(),
+            udid: generateHybridUDID(),
+            relayCode: relayCode,
+            realSerial: realSerial,
+            hardwareVersion: hardwareVersion,
+            created: ISO8601DateFormatter().string(from: Date())
+        )
+        entries[realUDID] = identity
+        save()
+        logItems.log("Issued new hybrid identity \(identity.serial)")
+        return identity
+    }
+
+    // Abandon the current identity; a new one is issued at the next registration
+    @discardableResult
+    func retire(realUDID: String) -> Bool {
+        guard let entry = entries.removeValue(forKey: realUDID) else { return false }
+        entries["\(realUDID).retired-\(Int(Date().timeIntervalSince1970))"] = entry
+        save()
+        return true
+    }
+
+    private func save() {
+        guard persist else { return }
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(entries).write(to: url, options: .atomic)
+        } catch {
+            // still stable while the app is running, but would change after a relaunch
+            logItems.log("FAILED to save identity registry: \(error)", isError: true)
+        }
+    }
+}
+
+func getIdentifiers(hybrid: HybridIdentity?) -> [String: String] {
     let identifiers = [
-        "hardware_version": machine,
+        "hardware_version": machineIdentifier(),
         "software_name": "iPhone OS",
         "software_version": UIDevice.current.systemVersion,
         "software_build_id": buildNumber()!,
-        "unique_device_id": udid,
-        "serial_number": serial
+        "unique_device_id": hybrid?.udid ?? realUniqueDeviceID(),
+        "serial_number": hybrid?.serial ?? realSerialNumber()
     ]
     return identifiers
 }
@@ -93,8 +198,9 @@ class RelayConnectionManager: ObservableObject {
     @AppStorage("savedRegistrationURL") public var savedRegistrationURL = ""
     
     @AppStorage("useHybridIdentity") public var useHybridIdentity = true
-    @AppStorage("hybridSerialNumber") public var hybridSerialNumber = ""
-    @AppStorage("hybridUniqueDeviceID") public var hybridUniqueDeviceID = ""
+    @Published var hybridSerialNumber = ""
+    @Published var hybridUniqueDeviceID = ""
+    lazy var identities = IdentityRegistry(logItems: logItems)
     
     var currentURL: URL? = nil
     var connectionDelegate: RelayConnectionDelegate? = nil
@@ -105,27 +211,32 @@ class RelayConnectionManager: ObservableObject {
     let maxBackoff: Int = 64
 
     init() {
-        ensureHybridIdentity()
+        identities.migrateFromUserDefaults(realUDID: realUniqueDeviceID())
+        refreshHybridIdentity()
     }
 
-    func ensureHybridIdentity() {
-        let hybrid = getOrCreateHybridIdentity()
-        if hybridSerialNumber != hybrid.serial {
-            hybridSerialNumber = hybrid.serial
-        }
-        if hybridUniqueDeviceID != hybrid.udid {
-            hybridUniqueDeviceID = hybrid.udid
-        }
+    // Identity to report in get-version-info, or nil to report the real one
+    func hybridIdentityForVersionInfo() -> HybridIdentity? {
+        guard useHybridIdentity else { return nil }
+        let identity = identities.identity(realUDID: realUniqueDeviceID(), realSerial: realSerialNumber(), hardwareVersion: machineIdentifier(), relayCode: savedRegistrationCode)
+        showHybridIdentity(identity)
+        return identity
+    }
+
+    func refreshHybridIdentity() {
+        showHybridIdentity(identities.existing(realUDID: realUniqueDeviceID(), relayCode: savedRegistrationCode))
     }
 
     func regenerateHybridIdentity() {
-        let newSerial = generateHybridSerial()
-        let newUDID = generateHybridUDID()
-        UserDefaults.standard.set(newSerial, forKey: "hybridSerialNumber")
-        UserDefaults.standard.set(newUDID, forKey: "hybridUniqueDeviceID")
-        hybridSerialNumber = newSerial
-        hybridUniqueDeviceID = newUDID
-        logItems.log("Generated new hybrid identity: \(newSerial)")
+        if identities.retire(realUDID: realUniqueDeviceID()) {
+            logItems.log("Retired hybrid identity \(hybridSerialNumber); a new one is issued at the next registration")
+        }
+        showHybridIdentity(nil)
+    }
+
+    private func showHybridIdentity(_ identity: HybridIdentity?) {
+        hybridSerialNumber = identity?.serial ?? "Issued at registration"
+        hybridUniqueDeviceID = identity?.udid ?? "Issued at registration"
     }
 
     func connect(_ url: URL) {
@@ -252,11 +363,12 @@ class RelayConnectionDelegate: WebSocketConnectionDelegate, ObservableObject {
                     manager.savedRegistrationCode = code
                     manager.savedRegistrationSecret = data["secret"] as? String ?? ""
                     manager.savedRegistrationURL = manager.currentURL?.absoluteString ?? ""
+                    manager.refreshHybridIdentity()
                 }
             }
             if let command = jsonDict["command"] as? String {
                 if command == "get-version-info" {
-                    let versionInfo = ["command": "response", "data": ["versions": getIdentifiers()], "id": jsonDict["id"]!] as [String : Any]
+                    let versionInfo = ["command": "response", "data": ["versions": getIdentifiers(hybrid: manager.hybridIdentityForVersionInfo())], "id": jsonDict["id"]!] as [String : Any]
                     print("Sending version info: \(versionInfo)")
                     manager.logItems.log("Sending version info: \(versionInfo)")
                     let data = try! JSONSerialization.data(withJSONObject: versionInfo)
