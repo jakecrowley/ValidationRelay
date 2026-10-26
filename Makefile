@@ -4,6 +4,10 @@ export LD_LIBRARY_PATH := $(THEOS)/toolchain/linux/host/lib:$(THEOS)/toolchain/l
 
 include $(THEOS)/makefiles/common.mk
 
+# Ensure Swift Foundation symbols bind to /usr/lib/swift/libswiftFoundation.dylib
+# instead of Foundation.framework so the binary runs on iOS 15 as well as iOS 16+.
+_THEOS_INTERNAL_LDFLAGS += -L$(CURDIR)/swift-compat -lswiftFoundation
+
 APPLICATION_NAME = ValidationRelay
 
 # Source files

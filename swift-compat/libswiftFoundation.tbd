@@ -1,0 +1,58 @@
+--- !tapi-tbd
+tbd-version:     4
+targets:         [ armv7-ios, armv7s-ios, arm64-ios, arm64e-ios ]
+install-name:    '/usr/lib/swift/libswiftFoundation.dylib'
+current-version: 120.100
+swift-abi-version: 7
+exports:
+  - targets:         [ armv7-ios, armv7s-ios, arm64-ios, arm64e-ios ]
+    symbols:         [ '_$s10Foundation10URLRequestV10httpMethodSSSgvs',
+                       '_$s10Foundation10URLRequestV19_bridgeToObjectiveCSo12NSURLRequestCyF',
+                       '_$s10Foundation10URLRequestV3url11cachePolicy15timeoutIntervalAcA3URLV_So017NSURLRequestCacheE0VSdtcfC',
+                       '_$s10Foundation10URLRequestV3urlAA3URLVSgvg',
+                       '_$s10Foundation10URLRequestV8httpBodyAA4DataVSgvs',
+                       '_$s10Foundation10URLRequestV8setValue_18forHTTPHeaderFieldySSSg_SStF',
+                       '_$s10Foundation10URLRequestVMa',
+                       '_$s10Foundation10URLRequestVMn',
+                       '_$s10Foundation22_convertNSErrorToErrorys0E0_pSo0C0CSgF',
+                       '_$s10Foundation3URLV14absoluteStringSSvg',
+                       '_$s10Foundation3URLV6schemeSSSgvg',
+                       '_$s10Foundation3URLV6stringACSgSSh_tcfC',
+                       '_$s10Foundation3URLVMa',
+                       '_$s10Foundation3URLVMn',
+                       '_$s10Foundation3URLVs23CustomStringConvertibleAAMc',
+                       '_$s10Foundation4DataV10contentsOf7optionsAcA3URLVh_So20NSDataReadingOptionsVtKcfC',
+                       '_$s10Foundation4DataV19_bridgeToObjectiveCSo6NSDataCyF',
+                       '_$s10Foundation4DataV19base64EncodedString7optionsSSSo27NSDataBase64EncodingOptionsV_tF',
+                       '_$s10Foundation4DataV36_unconditionallyBridgeFromObjectiveCyACSo6NSDataCSgFZ',
+                       '_$s10Foundation4DataVACycfC',
+                       '_$s10Foundation4DataVMa',
+                       '_$s10Foundation4DataVMn',
+                       '_$s10Foundation4DataVN',
+                       '_$s10Foundation4DataVSlAAMc',
+                       '_$s10Foundation4DataVs23CustomStringConvertibleAAMc',
+                       '_$s10Foundation4DateV2eeoiySbAC_ACtFZ',
+                       '_$s10Foundation4DateVACycfC',
+                       '_$s10Foundation4DateVMa',
+                       '_$s10Foundation4DateVMn',
+                       '_$s10Foundation4DateVSHAAMc',
+                       '_$s10Foundation4DateVs23CustomStringConvertibleAAMc',
+                       '_$s10Foundation4UUIDV10uuidStringSSvg',
+                       '_$s10Foundation4UUIDV2eeoiySbAC_ACtFZ',
+                       '_$s10Foundation4UUIDVACycfC',
+                       '_$s10Foundation4UUIDVMa',
+                       '_$s10Foundation4UUIDVMn',
+                       '_$s10Foundation4UUIDVSHAAMc',
+                       '_$s10Foundation5NSLogyySS_s7CVarArg_pdtF',
+                       '_$sSD10FoundationE19_bridgeToObjectiveCSo12NSDictionaryCyF',
+                       '_$sSS10FoundationE19_bridgeToObjectiveCSo8NSStringCyF',
+                       '_$sSS10FoundationE36_unconditionallyBridgeFromObjectiveCySSSo8NSStringCSgFZ',
+                       '_$sSS10FoundationE4data8encodingSSSgAA4DataVh_SSAAE8EncodingVtcfC',
+                       '_$sSS10FoundationE8EncodingV4utf8ACvgZ',
+                       '_$sSS10FoundationE8EncodingVMa',
+                       '_$sSa10FoundationE19_bridgeToObjectiveCSo7NSArrayCyF',
+                       '_$sSa10FoundationE36_unconditionallyBridgeFromObjectiveCySayxGSo7NSArrayCSgFZ',
+                       '_$sSy10FoundationE4data5using20allowLossyConversionAA4DataVSgSSAAE8EncodingV_SbtF',
+                       '__swift_FORCE_LOAD_$_swiftFoundation',
+                       '_swift_errorBridgingInfo_' ]
+...
