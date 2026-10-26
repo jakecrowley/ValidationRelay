@@ -14,6 +14,8 @@ struct ContentView: View {
     @AppStorage("selectedRelay") private var selectedRelay = "Beeper"
     @AppStorage("customRelayURL") private var customRelayURL = ""
     
+    @State private var confirmRegenerate = false
+    
     @ObservedObject var relayConnectionManager: RelayConnectionManager
     
     init(relayConnectionManager: RelayConnectionManager) {
@@ -108,13 +110,24 @@ struct ContentView: View {
                                 .truncationMode(.middle)
                         }
                         Button("Regenerate Identity") {
-                            relayConnectionManager.regenerateHybridIdentity()
+                            confirmRegenerate = true
+                        }
+                        .foregroundColor(.red)
+                        .alert(isPresented: $confirmRegenerate) {
+                            Alert(
+                                title: Text("Regenerate identity?"),
+                                message: Text("Apple activates each identity only once. This abandons the current registration, and you will need to register again in OpenBubbles."),
+                                primaryButton: .destructive(Text("Regenerate")) {
+                                    relayConnectionManager.regenerateHybridIdentity()
+                                },
+                                secondaryButton: .cancel()
+                            )
                         }
                     }
                 } header: {
                     Text("Identity settings")
                 } footer: {
-                    Text("Spoofs serial_number (12-char iMac13,1) and unique_device_id (UUID) in get-version-info")
+                    Text("Spoofs serial_number (12-char iMac13,1) and unique_device_id (UUID) in get-version-info. Each registration code gets its own identity, which is kept until the code changes. Deleting the app loses it.")
                 }
                 
                 Section {
